@@ -70,12 +70,32 @@ class Example(QWidget):
             self.change_delta(2)
         elif event.key() == Qt.Key.Key_PageDown:
             self.change_delta(0.5)
+        elif event.key() == Qt.Key.Key_Right:
+            d = self.move_key()
+            self.cord1 += d
+
+            self.getImage()
+        elif event.key() == Qt.Key.Key_Left:
+            d = self.move_key()
+            self.cord1 -= d
+            self.getImage()
+        elif event.key() == Qt.Key.Key_Down:
+            d = self.move_key()
+            self.cord2 -= d
+
+            self.getImage()
+        elif event.key() == Qt.Key.Key_Up:
+            d = self.move_key()
+            self.cord2 += d
+            self.getImage()
 
     def change_delta(self, delta_change):
         if 0.000125 <= self.delta * delta_change <= 66:
             self.delta *= delta_change
-            print(self.delta)
             self.getImage()
+
+    def move_key(self):
+        return self.delta / 10
 
 
 if __name__ == '__main__':
