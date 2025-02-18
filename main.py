@@ -5,7 +5,7 @@ import requests
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel
 
-SCREEN_SIZE = [600, 450]
+SCREEN_SIZE = [600, 600]
 
 
 class Example(QWidget):
@@ -17,8 +17,9 @@ class Example(QWidget):
     def getImage(self):
         server_address = 'https://static-maps.yandex.ru/v1?'
         api_key = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
-        ll_spn = 'll=37.530887,55.703118&spn=0.002,0.002'
-        # Готовим запрос.
+        cord1, cord2 = 37.530887, 55.703118
+        delta = 0.002
+        ll_spn = f'll={cord1},{cord2}&spn={delta},{delta}'
 
         map_request = f"{server_address}{ll_spn}&apikey={api_key}"
         response = requests.get(map_request)
@@ -46,7 +47,6 @@ class Example(QWidget):
         self.image.setPixmap(self.pixmap)
 
     def closeEvent(self, event):
-        """При закрытии формы подчищаем за собой"""
         os.remove(self.map_file)
 
 
