@@ -7,19 +7,19 @@ from PyQt6.QtCore import Qt
 
 SCREEN_SIZE = [600, 600]
 API_KEY = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
-GEOCODE_API_KEY = '8013b162-6b42-4997-9691-77b7074026e0'  # API key для геокодирования
+GEOCODE_API_KEY = '8013b162-6b42-4997-9691-77b7074026e0'
 SERVER_ADDRESS = 'https://static-maps.yandex.ru/v1?'
 
 
 class Example(QWidget):
     def __init__(self):
         super().__init__()
-        self.cord1, self.cord2 = 37.530887, 55.703118  # Начальные координаты Москвы
+        self.cord1, self.cord2 = 37.530887, 55.703118
         self.delta = 0.002
         self.map_file = "map.png"
         self.image = None
         self.is_dark_theme = False
-        self.point = None  # Переменная для хранения координат метки
+        self.point = None
 
         self.initUI()
         self.getImage()
@@ -44,6 +44,10 @@ class Example(QWidget):
         self.search_button = QPushButton("Искать", self)
         self.search_button.setGeometry(470, 460, 100, 30)
         self.search_button.clicked.connect(self.search_object)
+
+        self.reset_button = QPushButton("Сброс", self)
+        self.reset_button.setGeometry(470, 500, 100, 30)
+        self.reset_button.clicked.connect(self.reset_search)
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -71,6 +75,7 @@ class Example(QWidget):
                     """
             self.button_theme.setStyleSheet(style_button)
             self.search_button.setStyleSheet(style_button)
+            self.reset_button.setStyleSheet(style_button)
             self.search_input.setStyleSheet("""
                         QLineEdit {
                             background-color: #1c1c1c;
@@ -82,7 +87,7 @@ class Example(QWidget):
         else:
             map_theme = 'light'
             palette.setColor(QPalette.ColorRole.Window, QColor('#ffffff'))
-            palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
+            palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.black)
             self.setPalette(palette)
             style_button = """
                                     QPushButton {
@@ -100,6 +105,7 @@ class Example(QWidget):
                                 """
             self.button_theme.setStyleSheet(style_button)
             self.search_button.setStyleSheet(style_button)
+            self.reset_button.setStyleSheet(style_button)
             self.search_input.setStyleSheet("""
                                     QLineEdit {
                                         background-color: #f5f5f5;
@@ -109,13 +115,12 @@ class Example(QWidget):
                                         }
                                 """)
 
-        # Добавляем параметр pt, если есть координаты метки
         if self.point:
-            pt = f'&pt={self.point[0]},{self.point[1]},pm2rdl'  # pm2rdl - метка
+            pt = f'&pt={self.point[0]},{self.point[1]},pm2rdl'
         else:
             pt = ''
 
-        map_request = f"{SERVER_ADDRESS}{ll_spn}&theme={map_theme}{pt}&apikey={API_KEY}"  # Добавляем метку в запрос
+        map_request = f"{SERVER_ADDRESS}{ll_spn}&theme={map_theme}{pt}&apikey={API_KEY}"
         response = requests.get(map_request)
 
         if not response:
@@ -153,25 +158,27 @@ class Example(QWidget):
             if response.status_code == 200:
                 json_response = response.json()
                 try:
-                    # Извлекаем координаты из ответа
-                    coordinates = json_response['response']['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
+                    coordinates = \
+                    json_response['response']['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
                     self.cord1, self.cord2 = map(float, coordinates.split())
-
-                    # Сохраняем координаты для отображения метки
                     self.point = (self.cord1, self.cord2)
-
-                    self.getImage()  # Обновляем карту с меткой
+                    self.getImage()
 
                 except (IndexError, KeyError):
                     print("Объект не найден.")
-                    self.point = None  # Сбрасываем метку, если объект не найден
+                    self.point = None
                     self.getImage()
 
             else:
                 print("Ошибка выполнения запроса геокодирования:", response.status_code)
-                self.point = None #Сбросить метку
+                self.point = None
 
         self.search_input.clear()
+        self.setFocus()
+
+    def reset_search(self):
+        self.point = None
+        self.getImage()
         self.setFocus()
 
     def closeEvent(self, event):
