@@ -2,13 +2,14 @@ import os
 import sys
 import requests
 from PyQt6.QtGui import QPixmap, QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QVBoxLayout
 from PyQt6.QtCore import Qt
 
-SCREEN_SIZE = [600, 600]
+SCREEN_SIZE = [600, 650]  # Увеличиваем высоту окна для размещения поля адреса
 API_KEY = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
 GEOCODE_API_KEY = '8013b162-6b42-4997-9691-77b7074026e0'
 SERVER_ADDRESS = 'https://static-maps.yandex.ru/v1?'
+GEOCODE_ADDRESS_API = "https://geocode-maps.yandex.ru/1.x"
 
 
 class Example(QWidget):
@@ -20,6 +21,7 @@ class Example(QWidget):
         self.image = None
         self.is_dark_theme = False
         self.point = None
+        self.address = None  # Переменная для хранения адреса
 
         self.initUI()
         self.getImage()
@@ -28,27 +30,36 @@ class Example(QWidget):
         self.setGeometry(100, 100, *SCREEN_SIZE)
         self.setWindowTitle('Отображение карты')
 
-        self.image = QLabel(self)
-        self.image.move(0, 0)
-        self.image.resize(600, 450)
+        main_layout = QVBoxLayout(self)  # Основной вертикальный макет
 
-        self.button_theme = QPushButton('Переключить тему', self)
-        self.button_theme.setGeometry(200, 500, 200, 40)
-        self.button_theme.clicked.connect(self.toggle_theme)
+        self.image = QLabel(self)
+        self.image.resize(600, 450)
+        main_layout.addWidget(self.image)
+
+        # Добавляем поле для отображения адреса
+        self.address_label = QLabel("Адрес: ")
+        main_layout.addWidget(self.address_label)
 
         self.search_input = QLineEdit(self)
         self.search_input.setPlaceholderText("Введите запрос для поиска...")
-        self.search_input.setGeometry(0, 460, 450, 30)
-        self.search_input.returnPressed.connect(self.search_object)
+        main_layout.addWidget(self.search_input)
+
+        button_layout = QVBoxLayout()  # Горизонтальный макет для кнопок
+        main_layout.addLayout(button_layout)
 
         self.search_button = QPushButton("Искать", self)
-        self.search_button.setGeometry(470, 460, 100, 30)
+        button_layout.addWidget(self.search_button)
         self.search_button.clicked.connect(self.search_object)
 
         self.reset_button = QPushButton("Сброс", self)
-        self.reset_button.setGeometry(470, 500, 100, 30)
+        button_layout.addWidget(self.reset_button)
         self.reset_button.clicked.connect(self.reset_search)
 
+        self.button_theme = QPushButton('Переключить тему', self)
+        button_layout.addWidget(self.button_theme)
+        self.button_theme.clicked.connect(self.toggle_theme)
+
+        self.setLayout(main_layout)  # Устанавливаем основной макет для окна
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def getImage(self):
@@ -84,6 +95,7 @@ class Example(QWidget):
                             padding: 5px; /* Отступ текста от краев кнопки */
                             }
                     """)
+            self.address_label.setStyleSheet("color: white;")
         else:
             map_theme = 'light'
             palette.setColor(QPalette.ColorRole.Window, QColor('#ffffff'))
@@ -114,6 +126,7 @@ class Example(QWidget):
                                         padding: 5px; /* Отступ текста от краев кнопки */
                                         }
                                 """)
+            self.address_label.setStyleSheet("color: black;")
 
         if self.point:
             pt = f'&pt={self.point[0]},{self.point[1]},pm2rdl'
@@ -145,6 +158,8 @@ class Example(QWidget):
         except Exception as e:
             print(f"Ошибка при загрузке или отображении изображения: {e}")
 
+        self.update_address_label()  # Обновляем отображение адреса
+
     def toggle_theme(self):
         self.is_dark_theme = not self.is_dark_theme
         self.getImage()
@@ -159,25 +174,54 @@ class Example(QWidget):
                 json_response = response.json()
                 try:
                     coordinates = \
-                    json_response['response']['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
+                        json_response['response']['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point'][
+                            'pos']
                     self.cord1, self.cord2 = map(float, coordinates.split())
                     self.point = (self.cord1, self.cord2)
+                    self.get_address()
                     self.getImage()
 
                 except (IndexError, KeyError):
                     print("Объект не найден.")
                     self.point = None
+                    self.address = None
                     self.getImage()
 
             else:
                 print("Ошибка выполнения запроса геокодирования:", response.status_code)
                 self.point = None
+                self.address = None
 
         self.search_input.clear()
         self.setFocus()
 
+    def get_address(self):
+        try:
+            params = {
+                "apikey": GEOCODE_API_KEY,
+                "geocode": f"{self.cord1},{self.cord2}",
+                "format": "json"
+            }
+            response = requests.get(GEOCODE_ADDRESS_API, params=params)
+            json_data = response.json()
+            self.address = \
+            json_data["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["metaDataProperty"][
+                "GeocoderMetaData"]["text"]
+            self.update_address_label()
+        except:
+            self.address = "Адрес не найден"
+            self.update_address_label()
+
+    def update_address_label(self):
+        if self.address:
+            self.address_label.setText(f"Адрес: {self.address}")
+        else:
+            self.address_label.setText("Адрес: ")
+
     def reset_search(self):
         self.point = None
+        self.address = None  # Сбрасываем адрес
+        self.update_address_label()  # Обновляем поле адреса
         self.getImage()
         self.setFocus()
 
