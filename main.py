@@ -2,10 +2,10 @@ import os
 import sys
 import requests
 from PyQt6.QtGui import QPixmap, QColor, QPalette
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QVBoxLayout, QCheckBox
 from PyQt6.QtCore import Qt
 
-SCREEN_SIZE = [600, 650]  # Увеличиваем высоту окна для размещения поля адреса
+SCREEN_SIZE = [600, 700]  # Увеличиваем высоту окна для размещения поля адреса
 API_KEY = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
 GEOCODE_API_KEY = '8013b162-6b42-4997-9691-77b7074026e0'
 SERVER_ADDRESS = 'https://static-maps.yandex.ru/v1?'
@@ -22,6 +22,7 @@ class Example(QWidget):
         self.is_dark_theme = False
         self.point = None
         self.address = None  # Переменная для хранения адреса
+        self.include_postal_code = True  # По умолчанию почтовый индекс включен
 
         self.initUI()
         self.getImage()
@@ -58,6 +59,12 @@ class Example(QWidget):
         self.button_theme = QPushButton('Переключить тему', self)
         button_layout.addWidget(self.button_theme)
         self.button_theme.clicked.connect(self.toggle_theme)
+
+        # Добавляем CheckBox для включения/выключения почтового индекса
+        self.postal_code_checkbox = QCheckBox("Включить почтовый индекс", self)
+        self.postal_code_checkbox.setChecked(self.include_postal_code)  # Устанавливаем начальное состояние
+        self.postal_code_checkbox.stateChanged.connect(self.toggle_postal_code)
+        main_layout.addWidget(self.postal_code_checkbox)
 
         self.setLayout(main_layout)  # Устанавливаем основной макет для окна
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -96,6 +103,7 @@ class Example(QWidget):
                             }
                     """)
             self.address_label.setStyleSheet("color: white;")
+            self.postal_code_checkbox.setStyleSheet("color: white;")
         else:
             map_theme = 'light'
             palette.setColor(QPalette.ColorRole.Window, QColor('#ffffff'))
@@ -127,6 +135,7 @@ class Example(QWidget):
                                         }
                                 """)
             self.address_label.setStyleSheet("color: black;")
+            self.postal_code_checkbox.setStyleSheet("color: black;")
 
         if self.point:
             pt = f'&pt={self.point[0]},{self.point[1]},pm2rdl'
@@ -204,11 +213,19 @@ class Example(QWidget):
             }
             response = requests.get(GEOCODE_ADDRESS_API, params=params)
             json_data = response.json()
-            self.address = \
-            json_data["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["metaDataProperty"][
-                "GeocoderMetaData"]["text"]
+            geo_object = json_data["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
+            self.address = geo_object["metaDataProperty"]["GeocoderMetaData"]["text"]
+
+            if self.include_postal_code:
+                try:
+                    postal_code = geo_object["metaDataProperty"]["GeocoderMetaData"]["Address"]["postal_code"]
+                    self.address = f"{postal_code}, {self.address}"
+                except KeyError:
+                    print("Почтовый индекс не найден.")
+
             self.update_address_label()
-        except:
+        except Exception as e:
+            print(f"Ошибка при получении адреса: {e}")
             self.address = "Адрес не найден"
             self.update_address_label()
 
@@ -262,6 +279,10 @@ class Example(QWidget):
 
     def move_key(self):
         return self.delta / 10
+
+    def toggle_postal_code(self, state):
+        self.include_postal_code = (state == Qt.CheckState.Checked.value)  # Обновляем состояние
+        self.get_address()  # Обновляем адрес при изменении состояния CheckBox
 
 
 if __name__ == '__main__':
