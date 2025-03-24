@@ -4,6 +4,7 @@ import requests
 from PyQt6.QtGui import QPixmap, QColor, QPalette, QFont
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QLineEdit, QVBoxLayout, QCheckBox
 from PyQt6.QtCore import Qt, QRect, QSize
+import math
 
 SCREEN_SIZE = [600, 700]
 API_KEY = 'f3a0fe3a-b07e-4840-a1da-06f18b2ddf13'
@@ -12,7 +13,7 @@ SERVER_ADDRESS = 'https://static-maps.yandex.ru/v1?'
 GEOCODE_ADDRESS_API = "https://geocode-maps.yandex.ru/1.x"
 
 
-class ResizableAddressLabel(QLabel):
+class ResizableAddressLabel(QLabel):  # Оставляем ResizableAddressLabel без изменений
     def __init__(self, parent=None):
         super().__init__(parent)
         self.min_font_size = 8
@@ -74,7 +75,7 @@ class ResizableAddressLabel(QLabel):
 class Example(QWidget):
     def __init__(self):
         super().__init__()
-        self.cord1, self.cord2 = 37.530887, 55.703118
+        self.cord1, self.cord2 = 37.6173, 55.7558  # Москва, Кремль
         self.delta = 0.002
         self.map_file = "map.png"
         self.image = None
@@ -83,6 +84,8 @@ class Example(QWidget):
         self.address = None
         self.include_postal_code = True
         self.marker_size = QSize(20, 20)  # Примерный размер метки
+        self.organization = None  # хранит название организации
+        self.search_radius = 50  # Радиус поиска (метров)
 
         self.initUI()
         self.getImage()
@@ -282,15 +285,19 @@ class Example(QWidget):
             if self.include_postal_code and postal_code:
                 self.address = f"{postal_code}, {self.address}"
 
+            self.organization = None
             self.update_address_label()
         except Exception as e:
             print(f"Ошибка при получении адреса: {e}")
             self.address = "Адрес не найден"
+            self.organization = None
             self.update_address_label()
 
     def update_address_label(self):
         if self.address:
             self.address_label.setText(f"Адрес: {self.address}")
+        elif self.organization:
+            self.address_label.setText(f"Организация: {self.organization}")
         else:
             self.address_label.setText("Адрес: ")
         self.address_label.adjust_font_size()
@@ -298,6 +305,7 @@ class Example(QWidget):
     def reset_search(self):
         self.point = None
         self.address = None
+        self.organization = None
         self.update_address_label()
         self.getImage()
         self.setFocus()
@@ -345,21 +353,90 @@ class Example(QWidget):
         self.get_address()
 
     def map_clicked(self, event):
+        x = event.pos().x()
+        y = event.pos().y()
+
+        # Корректируем координаты клика на половину размера метки
+        x -= self.marker_size.width() / 2
+        y -= self.marker_size.height() / 2
+
+        lon = self.cord1 + (x - self.image.width() / 2) * self.delta / (self.image.width() / 2)
+        lat = self.cord2 - (y - self.image.height() / 2) * self.delta / (self.image.height() / 2)
+
         if event.button() == Qt.MouseButton.LeftButton:
-            x = event.pos().x()
-            y = event.pos().y()
-
-            # Корректируем координаты клика на половину размера метки
-            x -= self.marker_size.width() / 2
-            y -= self.marker_size.height() / 2
-
-            lon = self.cord1 + (x - self.image.width() / 2) * self.delta / (self.image.width() / 2)
-            lat = self.cord2 - (y - self.image.height() / 2) * self.delta / (self.image.height() / 2)
-
+            self.reset_search()
             self.cord1, self.cord2 = lon, lat
             self.point = (lon, lat)
             self.get_address()
             self.getImage()
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.find_organization(lon, lat)
+
+    def find_organization(self, lon, lat):
+        self.reset_search()
+        self.organization = None
+        self.point = None
+
+        geocode_url = f"{GEOCODE_ADDRESS_API}/?apikey={GEOCODE_API_KEY}&geocode={lon},{lat}&format=json&results=50"  # Повышаем количество результатов
+
+        response = requests.get(geocode_url)
+
+        if response.status_code == 200:
+            json_response = response.json()
+            try:
+                for feature in json_response["response"]["GeoObjectCollection"]["featureMember"]:
+                    geo_object = feature["GeoObject"]
+                    # Попробуем получить имя организации разными способами, т.к. структура может отличаться
+                    org_name = None
+                    try:
+                        org_name = geo_object["metaDataProperty"]["GeocoderMetaData"]["CompanyName"]
+                    except KeyError:
+                        pass
+                    if not org_name:
+                        org_name = geo_object["name"]
+
+                    if org_name:  # Если нашли хоть какое-то имя
+                        coords = geo_object["Point"]["pos"].split()
+                        org_lon, org_lat = map(float, coords)
+
+                        distance = self.calculate_distance(lat, lon, org_lat, org_lon)  # Считаем расстояние
+                        if distance <= self.search_radius:
+                            self.organization = org_name
+                            self.point = (org_lon, org_lat)
+                            break  # Нашли подходящую организацию, выходим из цикла
+                else:
+                    print(f"Организация не найдена в радиусе {self.search_radius} метров.")
+
+
+            except (IndexError, KeyError, TypeError) as e:
+                print(f"Ошибка при обработке результатов: {e}")
+                self.organization = "Не найдено"
+                self.point = None
+        else:
+            print("Ошибка выполнения запроса геокодирования:", response.status_code)
+            self.organization = "Ошибка"
+            self.point = None
+
+        self.address = None
+        self.update_address_label()
+        self.getImage()
+
+    def calculate_distance(self, lat1, lon1, lat2, lon2):
+        R = 6371000  # Радиус Земли
+
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        lat2_rad = math.radians(lat2)
+        lon2_rad = math.radians(lon2)
+
+        dlon = lon2_rad - lon1_rad
+        dlat = lat2_rad - lat1_rad
+
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        distance = R * c
+        return distance
 
 
 if __name__ == '__main__':
